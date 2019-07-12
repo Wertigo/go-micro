@@ -48,6 +48,10 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/api/users", routes.GetUsers(database)).Methods("GET")
 	r.HandleFunc("/api/users/{id}", routes.GetUserById(database)).Methods("GET")
+	// "/api/user/{id}/deposit" POST
+	// "/api/user/{id}/withdrawal" POST
+	// "/api/user/{id}/block" PUT
+	// "/api/user/{id}/transfer" POST
 
 	err := http.ListenAndServe(appPort, r)
 	if err != nil {
