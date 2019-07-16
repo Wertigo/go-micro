@@ -1,15 +1,14 @@
 package repositories
 
 import (
-	"context"
+	"database/sql"
+	"fmt"
 	"github/kdswto/webserver_example/src/models"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 	"log"
 )
 
 type UserRepository struct {
-	Database *mongo.Database
+	Database *sql.DB
 }
 
 func (r *UserRepository) GetAll() []*models.User {
@@ -17,21 +16,24 @@ func (r *UserRepository) GetAll() []*models.User {
 		log.Fatal("UserRepository.GetAll: Database not initialize")
 	}
 
-	var users []*models.User
-	ctx := context.Background()
-	usersCursor, err := r.Database.Collection("users").Find(ctx, bson.D{})
+	results, err := r.Database.Query(`
+		SELECT u.id, u.name, w.id, w.money 
+		FROM user u
+		LEFT JOIN wallet w on u.id = w.user_id
+	`)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("UserRepository.GetAll, Query: ", err)
 	}
 
-	defer usersCursor.Close(ctx)
-
-	for usersCursor.Next(ctx) {
+	var users []*models.User
+	for results.Next() {
 		user := &models.User{}
-		err = usersCursor.Decode(&user)
+		wallet := &models.Wallet{}
+		err = results.Scan(&user.Id, &user.Name, &wallet.Id, &wallet.Money)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("UserRepository.GetAll, Scan: ", err)
 		}
+		user.Wallet = wallet
 		users = append(users, user)
 	}
 
@@ -40,15 +42,22 @@ func (r *UserRepository) GetAll() []*models.User {
 
 func (r *UserRepository) GetById(id int) *models.User {
 	if r.Database == nil {
-		log.Fatal("UserRepository.GetAll: Database not initialize")
+		log.Fatal("UserRepository.GetById: Database not initialize")
 	}
 
-	ctx := context.Background()
-	filter := bson.D{{"id", id}}
+	statement := fmt.Sprintf(`
+		SELECT u.id, u.name, w.id, w.money 
+		FROM user u 
+		LEFT JOIN wallet w ON u.id = w.user_id
+		WHERE u.id = %d
+	`, id)
+	row := r.Database.QueryRow(statement)
 	user := &models.User{}
-	err := r.Database.Collection("users").FindOne(ctx, filter).Decode(&user)
+	wallet := &models.Wallet{}
+
+	err := row.Scan(&user.Id, &user.Name, &wallet.Id, &wallet.Money)
 	if err != nil {
-		return nil
+		log.Println("UserRepository.GetById: ", err)
 	}
 
 	return user

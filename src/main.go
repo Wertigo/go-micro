@@ -1,16 +1,14 @@
 package main
 
 import (
-	"context"
+	"database/sql"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"log"
-	"net/http"
-
 	"github.com/olebedev/config"
 	"github/kdswto/webserver_example/src/routes"
-	"go.mongodb.org/mongo-driver/mongo"
+	"log"
+	"net/http"
 )
 
 func getConfig() *config.Config {
@@ -29,7 +27,7 @@ type Kernel struct {
 func (k *Kernel) getParam(param string) string {
 	value, err := k.config.String(param)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(fmt.Sprintf("Kernel.getParam: param %s not exist", param), err)
 	}
 	return value
 }
@@ -41,19 +39,31 @@ func main() {
 	dbHost := kernel.getParam("db.host")
 	dbPort := kernel.getParam("db.port")
 	dbName := kernel.getParam("db.name")
-	dbUri := fmt.Sprintf("mongodb://%s:%s", dbHost, dbPort)
-	dbClient, _ := mongo.Connect(context.Background(), options.Client().ApplyURI(dbUri))
-	database := dbClient.Database(dbName)
+	dbUser := kernel.getParam("db.user")
+	dbPassword := kernel.getParam("db.password")
+
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", dbUser, dbPassword, dbHost, dbPort, dbName)
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		log.Fatal("Can't initialize database", err.Error())
+	}
+	defer db.Close()
+
+	err = db.Ping()
+	if err != nil {
+		log.Fatal("Database not respond", err.Error())
+	}
 
 	r := mux.NewRouter()
-	r.HandleFunc("/api/users", routes.GetUsers(database)).Methods("GET")
-	r.HandleFunc("/api/users/{id}", routes.GetUserById(database)).Methods("GET")
+	r.HandleFunc("/api/users", routes.GetUsers(db)).Methods("GET")
+	r.HandleFunc("/api/users/{id}", routes.GetUserById(db)).Methods("GET")
+	//r.HandleFunc("/api/users/{id}/deposit", routes.DepositByUserId(database)).Methods("POST")
 	// "/api/user/{id}/deposit" POST
 	// "/api/user/{id}/withdrawal" POST
 	// "/api/user/{id}/block" PUT
 	// "/api/user/{id}/transfer" POST
 
-	err := http.ListenAndServe(appPort, r)
+	err = http.ListenAndServe(appPort, r)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
